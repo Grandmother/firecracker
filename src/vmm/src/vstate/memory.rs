@@ -295,8 +295,17 @@ impl GuestMemoryExtension for GuestMemoryMmap {
                     for j in 0..64 {
                         let is_kvm_page_dirty = ((v >> j) & 1u64) != 0u64;
                         let page_offset = ((i * 64) + j) * page_size;
+
+                        // If KVM page is dirty -- mark firecracker page as dirty too. Needed to
+                        // keep track of KVM dirty pages in case we need to use them again if
+                        // current dump operation fails.
+                        if is_kvm_page_dirty {
+                            // FIXME: not sure about passing page_size as len
+                            firecracker_bitmap.mark_dirty(page_offset, page_size)
+                        }
+
                         let is_firecracker_page_dirty = firecracker_bitmap.dirty_at(page_offset);
-                        if is_kvm_page_dirty || is_firecracker_page_dirty {
+                        if is_firecracker_page_dirty {
                             // We are at the start of a new batch of dirty pages.
                             if write_size == 0 {
                                 // Seek forward over the unmodified pages.
