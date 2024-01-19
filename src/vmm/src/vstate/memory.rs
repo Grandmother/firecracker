@@ -274,6 +274,26 @@ impl GuestMemoryExtension for GuestMemoryMmap {
             .map_err(MemoryError::WriteMemory)
     }
 
+    /// Erases the firecracker internal bitmap of dirty pages
+    /// FIXME: do we need to return error here?
+    /// FIXME: can we make it something like a private method? Or it's already not exposed anyway?
+    fn erase_dirty<>(&self) -> Result<(), MemoryError> {
+        self.iter()
+            .enumerate()
+            // FIXME: unused `slot`. Can we avoid having it at all instead of marking it with
+            // underscore?
+            .try_for_each(|(_slot, region)| {
+                let firecracker_bitmap = region.bitmap();
+                if let Some(bitmap) = firecracker_bitmap {
+                    bitmap.reset();
+                }
+
+                Ok(())
+            })
+            // FIXME: don't know which error would be better
+            .map_err(MemoryError::MmapRegionError)
+    }
+
     /// Dumps all pages of GuestMemoryMmap present in `dirty_bitmap` to a writer.
     fn dump_dirty<T: WriteVolatile + std::io::Seek>(
         &self,
@@ -335,13 +355,11 @@ impl GuestMemoryExtension for GuestMemoryMmap {
                     )?;
                 }
                 writer_offset += region.len();
-                if let Some(bitmap) = firecracker_bitmap {
-                    bitmap.reset();
-                }
-
                 Ok(())
             })
-            .map_err(MemoryError::WriteMemory)
+            .map_err(MemoryError::WriteMemory);
+
+        self.erase_dirty()
     }
 }
 
